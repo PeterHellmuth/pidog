@@ -47,7 +47,13 @@ except ImportError:
 app = Flask(__name__)
 CORS(app)
 
+    Vilib = MockVilib
+
+app = Flask(__name__)
+CORS(app)
+
 import subprocess
+from pidog import preset_actions
 
 # Camera class for Pi Zero W (using picamera)
 class PiCameraStream:
@@ -75,16 +81,18 @@ class LibCameraStream:
     def __init__(self):
         self.process = None
         # Try rpicam-vid (Bookworm) then libcamera-vid (Bullseye)
+        # Use --timeout 0 for infinite stream
+        # Use --inline to ensure headers are sent with every frame (critical for parsing)
+        # Use --nopreview to save resources
         commands = [
-            ['rpicam-vid', '-t', '0', '--codec', 'mjpeg', '--width', '320', '--height', '240', '--framerate', '15', '-o', '-'],
-            ['libcamera-vid', '-t', '0', '--codec', 'mjpeg', '--width', '320', '--height', '240', '--framerate', '15', '-o', '-']
+            ['rpicam-vid', '-t', '0', '--codec', 'mjpeg', '--width', '320', '--height', '240', '--framerate', '15', '--inline', '--nopreview', '-o', '-'],
+            ['libcamera-vid', '-t', '0', '--codec', 'mjpeg', '--width', '320', '--height', '240', '--framerate', '15', '--inline', '--nopreview', '-o', '-']
         ]
         
         for cmd in commands:
             try:
-                self.process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10**6)
-                # Check if it stays alive for a moment
-                time.sleep(0.5)
+                self.process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+                time.sleep(1.0) # Wait for camera to start
                 if self.process.poll() is None:
                     print(f"Started camera with: {' '.join(cmd)}")
                     break
@@ -97,12 +105,6 @@ class LibCameraStream:
             raise ImportError("Could not start rpicam-vid or libcamera-vid")
 
     def get_frame(self):
-        # This is a simplified MJPEG parser. 
-        # In a real stream, we need to find FF D8 ... FF D9
-        # Since we are reading from stdout of the process, we try to read chunks.
-        # BUT, parsing JPEG boundaries in python from a stream is tricky without blocking.
-        # A simpler hack for 'get_frame' style (request/response) is hard with a continuous stream process.
-        # We need a background thread to read the stream and update the latest frame.
         return None
 
 # Wrapper to handle the background reading for LibCamera
@@ -117,7 +119,7 @@ class CameraWrapper:
         try:
             self.stream = PiCameraStream()
             print("Using PiCamera")
-            return # PiCamera is synchronous, no thread needed
+            return 
         except ImportError:
             pass
             
@@ -133,25 +135,31 @@ class CameraWrapper:
 
     def _update_libcamera(self):
         # Read from stdout and parse JPEGs
-        # JPEG starts with 0xFF 0xD8, ends with 0xFF 0xD9
-        buffer = b''
+        stream = self.lib_stream.process.stdout
+        bytes_buffer = b''
         while self.running and self.lib_stream.process:
-            chunk = self.lib_stream.process.stdout.read(4096)
-            if not chunk:
-                break
-            buffer += chunk
-            
-            a = buffer.find(b'\xff\xd8')
-            b = buffer.find(b'\xff\xd9')
-            
-            if a != -1 and b != -1:
-                if a < b:
-                    jpg = buffer[a:b+2]
-                    self.latest_frame = jpg
-                    buffer = buffer[b+2:]
-                else:
-                    # End is before start, discard garbage at beginning
-                    buffer = buffer[a:]
+            try:
+                # Read in larger chunks
+                chunk = stream.read(4096)
+                if not chunk:
+                    break
+                bytes_buffer += chunk
+                
+                # Find start and end of JPEG
+                a = bytes_buffer.find(b'\xff\xd8')
+                b = bytes_buffer.find(b'\xff\xd9')
+                
+                if a != -1 and b != -1:
+                    if a < b:
+                        jpg = bytes_buffer[a:b+2]
+                        self.latest_frame = jpg
+                        bytes_buffer = bytes_buffer[b+2:]
+                    else:
+                        # End before start, discard garbage
+                        bytes_buffer = bytes_buffer[a:]
+            except Exception as e:
+                print(f"Error reading stream: {e}")
+                time.sleep(0.1)
 
     def get_frame(self):
         if hasattr(self, 'stream') and self.stream:
@@ -171,9 +179,9 @@ def generate_frames():
         if frame:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-            time.sleep(0.04) # Limit to ~25fps sending
+            time.sleep(0.05) 
         else:
-            time.sleep(1) # Wait if no camera
+            time.sleep(0.1)
 
 @app.route('/video_feed')
 def video_feed():
@@ -219,21 +227,21 @@ def action():
     speed = data.get('speed', 95)
     
     try:
-        if name == 'bark':
-            # Bark logic from examples
-            from pidog.pidog import Pidog
-            # We might need to import specific bark functions if they aren't methods of Pidog
-            # Checking 12_app_control.py, bark seems to be a custom function or action
-            # my_dog.do_action('bark') might work if it's in actions_dictionary, 
-            # but 12_app_control.py uses a lambda calling `bark(my_dog, ...)`
-            # Let's try do_action first if it exists, otherwise we might need to implement bark manually
-            # For now, let's assume standard actions work via do_action
-            my_dog.do_action(name, speed=speed)
-        else:
-            my_dog.do_action(name, speed=speed)
-            
+        # Check if it's a preset action
+        if hasattr(preset_actions, name):
+            func = getattr(preset_actions, name)
+            # Most preset actions take my_dog as first arg
+            # Some take extra args, but defaults usually work
+            func(my_dog)
+            return jsonify({"message": f"Preset action {name} triggered"})
+        
+        # Check standard actions
+        # Some actions might be in actions_dictionary but not directly callable via do_action if not mapped?
+        # Actually do_action handles everything in actions_dictionary
+        my_dog.do_action(name, speed=speed)
         return jsonify({"message": f"Action {name} triggered"})
     except Exception as e:
+        print(f"Action error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/move', methods=['POST'])
