@@ -42,15 +42,10 @@ except ImportError:
             
     Vilib = MockVilib
 
-    Vilib = MockVilib
-
 app = Flask(__name__)
 CORS(app)
 
-    Vilib = MockVilib
 
-app = Flask(__name__)
-CORS(app)
 
 import subprocess
 from pidog import preset_actions
@@ -210,15 +205,90 @@ try:
 except Exception as e:
     logging.error(f"Failed to initialize Vilib: {e}")
 
+# Global state for running examples
+running_process = None
+
+@app.route('/examples', methods=['GET'])
+def list_examples():
+    import glob
+    # List python files starting with a digit in the parent directory
+    files = glob.glob(os.path.join(os.path.dirname(__file__), '../../[0-9]*.py'))
+    filenames = [os.path.basename(f) for f in files]
+    filenames.sort()
+    return jsonify(filenames)
+
+@app.route('/examples/run', methods=['POST'])
+def run_example():
+    global running_process, my_dog
+    
+    data = request.json
+    filename = data.get('filename')
+    
+    if not filename:
+        return jsonify({"error": "Filename required"}), 400
+        
+    path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../', filename))
+    if not os.path.exists(path):
+        return jsonify({"error": "File not found"}), 404
+
+    try:
+        # Stop existing process if any
+        if running_process:
+            running_process.terminate()
+            running_process.wait()
+            running_process = None
+            
+        # Release Pidog resources
+        if my_dog:
+            my_dog.close()
+            my_dog = None
+            
+        # Start new process
+        # Run from the parent directory so relative paths in examples work
+        cwd = os.path.dirname(path)
+        running_process = subprocess.Popen(['python3', filename], cwd=cwd)
+        
+        return jsonify({"message": f"Started {filename}"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/examples/stop', methods=['POST'])
+def stop_example():
+    global running_process, my_dog
+    
+    try:
+        if running_process:
+            running_process.terminate()
+            running_process.wait()
+            running_process = None
+            
+        # Re-initialize Pidog
+        if my_dog is None:
+            try:
+                from pidog import Pidog
+                my_dog = Pidog()
+                my_dog.head_move([[0, 0, 0]], immediately=True, speed=80)
+            except Exception as e:
+                logging.error(f"Failed to re-init Pidog: {e}")
+                return jsonify({"error": "Failed to re-init Pidog"}), 500
+                
+        return jsonify({"message": "Stopped example and re-initialized Pidog"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/status', methods=['GET'])
 def status():
     return jsonify({
         "status": "online",
-        "dog_initialized": my_dog is not None
+        "dog_initialized": my_dog is not None,
+        "running_example": running_process is not None
     })
 
 @app.route('/action', methods=['POST'])
 def action():
+    if running_process:
+        return jsonify({"error": "Cannot perform action while example is running"}), 409
+
     if not my_dog:
         return jsonify({"error": "Pidog not initialized"}), 500
     
@@ -246,6 +316,9 @@ def action():
 
 @app.route('/move', methods=['POST'])
 def move():
+    if running_process:
+        return jsonify({"error": "Cannot move while example is running"}), 409
+
     if not my_dog:
         return jsonify({"error": "Pidog not initialized"}), 500
         
@@ -269,6 +342,9 @@ def move():
 
 @app.route('/head', methods=['POST'])
 def head():
+    if running_process:
+        return jsonify({"error": "Cannot move head while example is running"}), 409
+
     if not my_dog:
         return jsonify({"error": "Pidog not initialized"}), 500
         
