@@ -705,7 +705,7 @@ class ExampleRunner:
             # Require stronger acceleration to trigger
             ACC_LIFT_THRESH = -20000 # ~1.2G (Accelerating UP)
             ACC_LAND_THRESH = -10000 # ~0.6G (Weightless/Drop)
-            DIST_THRESH = 15         # From 4_response.py
+            DIST_THRESH = 10         # Reduced to 10cm to prevent false positives
             
             # State
             state = 'SLEEP' # SLEEP, AWAKE, SUPERMAN, INTERACTING
@@ -733,31 +733,13 @@ class ExampleRunner:
                 is_touched = touch != 'N'
                 distance = my_dog.read_distance()
                 
-                # Debug print for tuning
-                # print(f"AX: {ax}, Dist: {distance}")
-
                 sound_dir = 0
                 if my_dog.ears.isdetected():
                     sound_dir = my_dog.ears.read()
 
-                # --- INTERACTION TIMER ---
-                # If interacting, wait for it to finish
-                if state == 'INTERACTING':
-                    # Reset Superman flags to prevent false triggers from robot movement
-                    upflag = False
-                    downflag = False
-                    
-                    if current_time > state_timer:
-                        state = 'AWAKE'
-                        my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
-                        my_dog.head_move([[0,0,0]], speed=80)
-                    else:
-                        self.sleep(0.02)
-                        continue
-
-                # --- SUPERMAN DETECTION ---
+                # --- SUPERMAN DETECTION (Priority 1) ---
                 # Logic adapted from 6_be_picked_up.py
-                # Only check if NOT interacting (stable)
+                # Always check this, even if interacting
                 if ax < ACC_LIFT_THRESH:
                     if not upflag: upflag = True
                     if downflag:
@@ -787,6 +769,22 @@ class ExampleRunner:
                     self.sleep(0.02)
                     continue
 
+                # --- INTERACTION TIMER ---
+                # If interacting, wait for it to finish
+                if state == 'INTERACTING':
+                    # Reset Superman flags to prevent false triggers from robot movement
+                    # upflag = False # Don't reset here, allows pickup during interaction
+                    # downflag = False
+                    
+                    if current_time > state_timer:
+                        state = 'AWAKE'
+                        my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
+                        my_dog.do_action('stand', speed=80)
+                        my_dog.head_move([[0,0,0]], speed=80)
+                    else:
+                        self.sleep(0.02)
+                        continue
+
                 # --- STATE LOGIC ---
                 
                 if state == 'SLEEP':
@@ -799,7 +797,7 @@ class ExampleRunner:
                     if is_touched:
                         print("Waking up!")
                         state = 'INTERACTING'
-                        state_timer = current_time + 3
+                        state_timer = current_time + 5
                         last_sound_time = current_time
                         
                         my_dog.body_stop()
@@ -863,6 +861,7 @@ def list_examples():
         '3_patrol.py', 
         '4_response.py',
         '5_rest.py',
+        '6_be_picked_up.py',
         '8_pushup.py',
         '9_howling.py',
         '10_balance.py',
