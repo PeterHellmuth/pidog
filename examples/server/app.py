@@ -240,7 +240,15 @@ def run_example():
             
         # Release Pidog resources
         if my_dog:
-            my_dog.close()
+            try:
+                # my_dog.close() uses signals which fail in Flask threads
+                # Manually clean up
+                my_dog.stop_and_lie()
+                my_dog.close_all_thread()
+                if hasattr(my_dog, 'sensory_process') and my_dog.sensory_process:
+                    my_dog.sensory_process.terminate()
+            except Exception as e:
+                print(f"Error cleaning up Pidog: {e}")
             my_dog = None
             
         # Start new process
@@ -250,6 +258,7 @@ def run_example():
         
         return jsonify({"message": f"Started {filename}"})
     except Exception as e:
+        print(f"Error running example: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/examples/stop', methods=['POST'])
