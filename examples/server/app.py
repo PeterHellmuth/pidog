@@ -243,6 +243,8 @@ class ExampleRunner:
             target = self.run_super_dog
         elif 'kids_play' in example_name:
             target = self.run_kids_play
+        elif 'be_picked_up' in example_name:
+            target = self.run_be_picked_up
         
         if target:
             self.thread = threading.Thread(target=target)
@@ -400,6 +402,55 @@ class ExampleRunner:
                 self.sleep(1)
         except Exception as e:
             print(f"Error in rest: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def run_be_picked_up(self):
+        try:
+            print("Running be_picked_up")
+            if not my_dog: return
+            
+            # Constants
+            ACC_LIFT_THRESH = -18000
+            ACC_LAND_THRESH = -13000
+            
+            upflag = False
+            downflag = False
+            
+            def fly():
+                my_dog.rgb_strip.set_mode('boom', 'red', bps=3)
+                my_dog.legs.servo_move([45, -45, 90, -80, 90, 90, -90, -90], speed=60)
+                my_dog.speak('woohoo', volume=80)
+                my_dog.do_action('wag_tail', step_count=10, speed=100)
+
+            def stand():
+                my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
+                my_dog.do_action('stand', speed=80)
+                my_dog.head_move([[0, 0, 0]], speed=80)
+
+            stand()
+            
+            while self.running:
+                ax = my_dog.accData[0]
+                
+                if ax < ACC_LIFT_THRESH:
+                    if not upflag: 
+                        upflag = True
+                        fly()
+                    if downflag:
+                        downflag = False
+                        
+                if ax > ACC_LAND_THRESH:
+                    if upflag:
+                        upflag = False
+                        stand()
+                    if not downflag: 
+                        downflag = True
+                
+                self.sleep(0.05)
+                
+        except Exception as e:
+            print(f"Error in be_picked_up: {e}")
             import traceback
             traceback.print_exc()
 
