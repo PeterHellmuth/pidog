@@ -432,9 +432,11 @@ class ExampleRunner:
             
             while self.running:
                 ax = my_dog.accData[0]
+                # print(f"AX: {ax}") # Debug logging
                 
                 if ax < ACC_LIFT_THRESH:
                     if not upflag: 
+                        print(f"Lift detected! AX={ax}")
                         upflag = True
                         fly()
                     if downflag:
@@ -442,6 +444,7 @@ class ExampleRunner:
                         
                 if ax > ACC_LAND_THRESH:
                     if upflag:
+                        print(f"Land detected! AX={ax}")
                         upflag = False
                         stand()
                     if not downflag: 
@@ -792,7 +795,9 @@ class ExampleRunner:
                 # Logic adapted from 6_be_picked_up.py
                 # Always check this, even if interacting
                 if ax < ACC_LIFT_THRESH:
-                    if not upflag: upflag = True
+                    if not upflag: 
+                        print(f"KidsPlay: Lift detected! AX={ax}")
+                        upflag = True
                     if downflag:
                         # Landed
                         if state == 'SUPERMAN':
@@ -806,7 +811,7 @@ class ExampleRunner:
                     if upflag:
                         # Flying
                         if state != 'SUPERMAN':
-                            print("Flying!")
+                            print(f"KidsPlay: Flying! AX={ax}")
                             state = 'SUPERMAN'
                             my_dog.rgb_strip.set_mode('boom', 'red', bps=3)
                             my_dog.legs.servo_move([45, -45, 90, -80, 90, 90, -90, -90], speed=60)
