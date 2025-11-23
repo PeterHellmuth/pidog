@@ -700,123 +700,143 @@ class ExampleRunner:
             print("Running kids_play")
             if not my_dog: return
             
-            # States: SLEEP, AWAKE, SUPERMAN
-            state = 'SLEEP'
-            last_state = None
+            # Constants - Tuned for stability
+            # Gravity is approx -16384
+            # Require stronger acceleration to trigger
+            ACC_LIFT_THRESH = -20000 # ~1.2G (Accelerating UP)
+            ACC_LAND_THRESH = -10000 # ~0.6G (Weightless/Drop)
+            DIST_THRESH = 15
+            
+            # State
+            state = 'SLEEP' # SLEEP, AWAKE, SUPERMAN, INTERACTING
+            state_timer = 0
+            last_doze_time = 0
+            last_sound_time = 0
             
             # Superman detection vars
             upflag = False
             downflag = False
             
-            # Initial Sleep Setup
+            # Initial Setup
             my_dog.do_action('lie', speed=50)
             my_dog.wait_all_done()
+            # Wait for robot to settle to avoid false triggers from servo movement
+            self.sleep(1.0) 
+            my_dog.rgb_strip.set_mode('breath', 'pink', bps=0.3)
             
-            def check_superman():
-                nonlocal upflag, downflag
+            while self.running:
+                current_time = time.time()
+                
+                # --- SENSOR POLLING (Fast) ---
                 ax = my_dog.accData[0]
-                # gravity : 1G = -16384
-                # Picked up logic from 6_be_picked_up.py
-                if ax < -18000: # accelerating down (start of lift?)
+                touch = my_dog.dual_touch.read()
+                is_touched = touch != 'N'
+                distance = my_dog.read_distance()
+                
+                sound_dir = 0
+                if my_dog.ears.isdetected():
+                    sound_dir = my_dog.ears.read()
+
+                # --- SUPERMAN DETECTION ---
+                # Logic adapted from 6_be_picked_up.py
+                if ax < ACC_LIFT_THRESH:
                     if not upflag: upflag = True
                     if downflag:
+                        # Landed
+                        if state == 'SUPERMAN':
+                            print("Landed!")
+                            state = 'AWAKE'
+                            my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
+                            my_dog.do_action('stand', speed=80)
                         downflag = False
-                        return False # Landed
-                
-                if ax > -13000: # accelerating up (end of lift?)
+                        
+                if ax > ACC_LAND_THRESH:
                     if upflag:
+                        # Flying
+                        if state != 'SUPERMAN':
+                            print("Flying!")
+                            state = 'SUPERMAN'
+                            my_dog.rgb_strip.set_mode('boom', 'red', bps=3)
+                            my_dog.legs.servo_move([45, -45, 90, -80, 90, 90, -90, -90], speed=60)
+                            my_dog.speak('woohoo', volume=80)
+                            my_dog.do_action('wag_tail', step_count=10, speed=100)
                         upflag = False
-                        return True # Flying!
                     if not downflag: downflag = True
-                return None
 
-            while self.running:
-                # 1. Check Sensors
-                is_touched = my_dog.dual_touch.read() != 'N'
-                
-                direction = 0
-                if my_dog.ears.isdetected():
-                    direction = my_dog.ears.read()
-                
-                is_flying = check_superman()
-                
-                # State Transitions
-                if is_flying is True and state != 'SUPERMAN':
-                    state = 'SUPERMAN'
-                elif is_flying is False and state == 'SUPERMAN':
-                    state = 'AWAKE' # Landed
-                
-                # State Logic
-                if state == 'SLEEP':
-                    if last_state != 'SLEEP':
-                        print("State: SLEEP")
-                        my_dog.rgb_strip.set_mode('breath', 'pink', bps=0.3)
-                        my_dog.do_action('lie', speed=50)
-                        last_state = 'SLEEP'
-                    
-                    my_dog.do_action('doze_off', speed=80)
-                    
-                    # Wake up on touch or loud sound
-                    if is_touched or direction != 0:
-                        print("Waking up!")
-                        my_dog.rgb_strip.set_mode('boom', 'yellow', bps=1)
-                        my_dog.body_stop()
-                        self.sleep(0.2)
-                        my_dog.do_action('stand', speed=80)
-                        my_dog.head_move([[0, 0, 0]], immediately=True, speed=80)
-                        my_dog.wait_all_done()
-                        # Stretch
-                        my_dog.do_action('stretch', speed=50)
-                        my_dog.wait_all_done()
+                # If Superman, skip other logic
+                if state == 'SUPERMAN':
+                    self.sleep(0.02)
+                    continue
+
+                # --- INTERACTION TIMER ---
+                # If interacting, wait for it to finish
+                if state == 'INTERACTING':
+                    if current_time > state_timer:
                         state = 'AWAKE'
-                        
-                elif state == 'AWAKE':
-                    if last_state != 'AWAKE':
-                        print("State: AWAKE")
                         my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
-                        my_dog.do_action('stand', speed=80)
-                        last_state = 'AWAKE'
+                        my_dog.head_move([[0,0,0]], speed=80)
+                    else:
+                        self.sleep(0.02)
+                        continue
+
+                # --- STATE LOGIC ---
+                
+                if state == 'SLEEP':
+                    # Doze off animation periodically
+                    if current_time - last_doze_time > 0.2:
+                        my_dog.do_action('doze_off', speed=80)
+                        last_doze_time = current_time
+                    
+                    # Wake up triggers
+                    # Increased sound cooldown to prevent instant wakeups from background noise
+                    if is_touched or (sound_dir != 0 and current_time - last_sound_time > 4):
+                        print("Waking up!")
+                        state = 'INTERACTING'
+                        state_timer = current_time + 3
+                        last_sound_time = current_time
                         
-                    # React to touch
-                    if is_touched:
-                        # Use RGB list for orange [255, 128, 0]
+                        my_dog.body_stop()
+                        my_dog.rgb_strip.set_mode('boom', 'yellow', bps=1)
+                        my_dog.do_action('stand', speed=80)
+                        my_dog.head_move([[0,0,0]], immediately=True, speed=80)
+                        self.sleep(0.5)
+                        my_dog.do_action('stretch', speed=50)
+
+                elif state == 'AWAKE':
+                    # 1. Distance (Back up)
+                    if distance > 0 and distance < DIST_THRESH:
+                        print(f"Too close! {distance}")
+                        state = 'INTERACTING'
+                        state_timer = current_time + 2.5
+                        
+                        my_dog.rgb_strip.set_mode('bark', 'red', bps=2)
+                        my_dog.do_action('backward', step_count=2, speed=95)
+                        bark(my_dog, [0, 0, 0])
+                        
+                    # 2. Touch (Happy)
+                    elif is_touched:
+                        print("Touched!")
+                        state = 'INTERACTING'
+                        state_timer = current_time + 2
+                        
                         my_dog.rgb_strip.set_mode('breath', [255, 128, 0], bps=1)
                         my_dog.do_action('wag_tail', step_count=5, speed=100)
                         bark(my_dog, [0, 0, 0])
-                        my_dog.head_move([[0, 0, -20]], speed=80) # Look down/happy
-                        self.sleep(1)
-                        my_dog.head_move([[0, 0, 0]], speed=80)
+                        my_dog.head_move([[0, 0, -20]], speed=80)
+
+                    # 3. Sound (Turn head)
+                    # Increased cooldown to 4s to prevent jerking
+                    elif sound_dir != 0 and current_time - last_sound_time > 4:
+                        print(f"Sound at {sound_dir}")
+                        last_sound_time = current_time
+                        state = 'INTERACTING'
+                        state_timer = current_time + 2
                         
-                    # React to sound
-                    elif direction != 0:
-                        print(f"Heard sound at {direction}")
                         my_dog.rgb_strip.set_mode('listen', 'blue', bps=1)
-                        # Turn head to sound
-                        yaw = 0
-                        if direction > 0: yaw = -30
-                        elif direction < 0: yaw = 30
+                        yaw = -30 if sound_dir > 0 else 30
                         my_dog.head_move([[yaw, 0, 0]], speed=90)
-                        self.sleep(1)
-                        my_dog.head_move([[0, 0, 0]], speed=80)
-                        
-                    # Idle behavior
-                    else:
-                        my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
-                        # Random small movements?
-                        pass
-                        
-                elif state == 'SUPERMAN':
-                    if last_state != 'SUPERMAN':
-                        print("State: SUPERMAN")
-                        my_dog.rgb_strip.set_mode('boom', color='red', bps=3)
-                        # Superman pose
-                        my_dog.legs.servo_move([45, -45, 90, -80, 90, 90, -90, -90], speed=60)
-                        my_dog.speak('woohoo', volume=80)
-                        last_state = 'SUPERMAN'
-                    
-                    my_dog.do_action('wag_tail', step_count=1, speed=100)
                 
-                self.sleep(0.05)
+                self.sleep(0.02)
 
         except Exception as e:
             print(f"Error in kids_play: {e}")
