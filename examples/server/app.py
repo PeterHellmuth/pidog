@@ -243,22 +243,29 @@ def run_example():
             try:
                 # my_dog.close() uses signals which fail in Flask threads
                 # Manually clean up
+                print("Cleaning up Pidog...")
                 my_dog.stop_and_lie()
                 my_dog.close_all_thread()
                 if hasattr(my_dog, 'sensory_process') and my_dog.sensory_process:
                     my_dog.sensory_process.terminate()
+                print("Pidog cleanup done.")
             except Exception as e:
                 print(f"Error cleaning up Pidog: {e}")
+                import traceback
+                traceback.print_exc()
             my_dog = None
             
         # Start new process
         # Run from the parent directory so relative paths in examples work
         cwd = os.path.dirname(path)
+        print(f"Starting example: {filename} in {cwd}")
         running_process = subprocess.Popen(['python3', filename], cwd=cwd)
         
         return jsonify({"message": f"Started {filename}"})
     except Exception as e:
         print(f"Error running example: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/examples/stop', methods=['POST'])
