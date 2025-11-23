@@ -205,7 +205,9 @@ try:
 except Exception as e:
     logging.error(f"Failed to initialize Vilib: {e}")
 
-from pidog.preset_actions import pant, body_twisting, bark, shake_head
+from pidog.preset_actions import pant, body_twisting, bark, shake_head, push_up, howling, bark_action
+from pidog.walk import Walk
+from math import sin
 
 class ExampleRunner:
     def __init__(self):
@@ -227,6 +229,16 @@ class ExampleRunner:
             target = self.run_patrol
         elif 'rest' in example_name:
             target = self.run_rest
+        elif 'pushup' in example_name:
+            target = self.run_pushup
+        elif 'howling' in example_name:
+            target = self.run_howling
+        elif 'balance' in example_name:
+            target = self.run_balance
+        elif 'response' in example_name:
+            target = self.run_response
+        elif 'ball_track' in example_name:
+            target = self.run_ball_track
         
         if target:
             self.thread = threading.Thread(target=target)
@@ -246,6 +258,11 @@ class ExampleRunner:
         if my_dog:
             my_dog.body_stop()
             my_dog.head_move([[0, 0, 0]], immediately=True, speed=80)
+            # Reset Vilib if used
+            try:
+                Vilib.camera_close()
+            except:
+                pass
 
     def sleep(self, duration):
         """Interruptible sleep"""
@@ -256,44 +273,32 @@ class ExampleRunner:
     def run_wake_up(self):
         try:
             print("Running wake_up")
-            # 1_wake_up.py logic
             if not my_dog: return
-            
-            # Init pose from example
             my_dog.head_move([[0, 0, -30]], immediately=True, speed=80)
             self.sleep(1)
-            
-            # stretch
             if not self.running: return
             my_dog.rgb_strip.set_mode('listen', color='yellow', bps=0.6, brightness=0.8)
             my_dog.do_action('stretch', speed=50)
             my_dog.head_move([[0, 0, 30]]*2, immediately=True)
             my_dog.wait_all_done()
             self.sleep(0.2)
-            
             if not self.running: return
             body_twisting(my_dog)
             my_dog.wait_all_done()
             self.sleep(0.5)
-            
             if not self.running: return
             my_dog.head_move([[0, 0, -30]], immediately=True, speed=90)
-            # sit and wag_tail
             my_dog.do_action('sit', speed=25)
             my_dog.wait_legs_done()
             my_dog.do_action('wag_tail', step_count=10, speed=100)
             my_dog.rgb_strip.set_mode('breath', color=[245, 10, 10], bps=2.5, brightness=0.8)
             pant(my_dog, pitch_comp=-30, volume=80)
             my_dog.wait_all_done()
-            
-            # hold
             if not self.running: return
             my_dog.do_action('wag_tail', step_count=10, speed=30)
             my_dog.rgb_strip.set_mode('breath', 'pink', bps=0.5)
-            
             while self.running:
                 self.sleep(1)
-                
         except Exception as e:
             print(f"Error in wake_up: {e}")
             import traceback
@@ -302,22 +307,14 @@ class ExampleRunner:
     def run_patrol(self):
         try:
             print("Running patrol")
-            # 3_patrol.py logic
             if not my_dog: return
-            
             DANGER_DISTANCE = 15
-            
             my_dog.do_action('stand', speed=80)
             my_dog.wait_all_done()
             self.sleep(0.5)
-            
             stand = my_dog.legs_angle_calculation([[0, 80], [0, 80], [30, 75], [30, 75]])
-            
             while self.running:
                 distance = round(my_dog.read_distance(), 2)
-                # print(f"distance: {distance} cm")
-
-                # danger
                 if distance > 0 and distance < DANGER_DISTANCE:
                     print(f"DANGER! Distance: {distance}")
                     my_dog.body_stop()
@@ -328,19 +325,15 @@ class ExampleRunner:
                     my_dog.wait_all_done()
                     self.sleep(0.5)
                     bark(my_dog, [head_yaw, 0, 0])
-
                     while self.running and distance < DANGER_DISTANCE:
                         distance = round(my_dog.read_distance(), 2)
                         self.sleep(0.01)
-                # safe
                 else:
                     my_dog.rgb_strip.set_mode('breath', 'white', bps=0.5)
                     my_dog.do_action('forward', step_count=2, speed=98)
                     my_dog.do_action('shake_head', step_count=1, speed=80)
                     my_dog.do_action('wag_tail', step_count=5, speed=99)
-                
                 self.sleep(0.01)
-
         except Exception as e:
             print(f"Error in patrol: {e}")
             import traceback
@@ -349,9 +342,7 @@ class ExampleRunner:
     def run_rest(self):
         try:
             print("Running rest")
-            # 5_rest.py logic
             if not my_dog: return
-            
             def loop_around(amplitude=60, interval=0.5, speed=100):
                 if not self.running: return
                 my_dog.head_move([[amplitude,0,0]], immediately=True, speed=speed)
@@ -364,48 +355,32 @@ class ExampleRunner:
                 if not self.running: return
                 my_dog.head_move([[0,0,0]], immediately=True, speed=speed)
                 my_dog.wait_all_done()
-
             def is_sound():
                 if my_dog.ears.isdetected():
                     direction = my_dog.ears.read()
-                    if direction != 0:
-                        return True
+                    if direction != 0: return True
                 return False
-
             my_dog.wait_all_done()
             my_dog.do_action('lie', speed=50)
             my_dog.wait_all_done()
-
             while self.running:
-                # Sleeping
                 my_dog.rgb_strip.set_mode('breath', 'pink', bps=0.3)
                 my_dog.head_move([[0,0,-40]], immediately=True, speed=5)
                 my_dog.do_action('doze_off', speed=92)
-                
-                # Cleanup sound detection logic simulation (sleep and check)
                 self.sleep(1)
-                if is_sound(): pass # Just check
-
-                # keep sleeping
+                if is_sound(): pass 
                 while self.running and is_sound() is False:
                     my_dog.do_action('doze_off', speed=92)
                     self.sleep(0.2)
-
                 if not self.running: break
-
-                # If heard anything, wake up
                 my_dog.rgb_strip.set_mode('boom', 'yellow', bps=1)
                 my_dog.body_stop()
                 self.sleep(0.1)
                 my_dog.do_action('stand', speed=80)
                 my_dog.head_move([[0, 0, 0]], immediately=True, speed=80)
                 my_dog.wait_all_done()
-                
-                # Look around
                 loop_around(60, 1, 60)
                 self.sleep(0.5)
-                
-                # tilt head
                 my_dog.speak('confused_3', volume=80)
                 my_dog.do_action('tilting_head_left', speed=80)
                 my_dog.wait_all_done()
@@ -413,27 +388,228 @@ class ExampleRunner:
                 my_dog.head_move([[0, 0, -10]], immediately=True, speed=80)
                 my_dog.wait_all_done()
                 self.sleep(0.4)
-                
                 shake_head(my_dog)
                 self.sleep(0.2)
-
-                # Lay down again
                 my_dog.rgb_strip.set_mode('breath', 'pink', bps=1)
                 my_dog.do_action('lie', speed=50)
                 my_dog.wait_all_done()
                 self.sleep(1)
-
         except Exception as e:
             print(f"Error in rest: {e}")
             import traceback
             traceback.print_exc()
+
+    def run_pushup(self):
+        try:
+            print("Running pushup")
+            if not my_dog: return
+            my_dog.legs_move([[45, -25, -45, 25, 80, 70, -80, -70]], speed=50)
+            my_dog.head_move([[0, 0, -20]], speed=90)
+            my_dog.wait_all_done()
+            self.sleep(0.5)
+            bark(my_dog, [0, 0, -20])
+            self.sleep(0.1)
+            bark(my_dog, [0, 0, -20])
+            self.sleep(1)
+            my_dog.rgb_strip.set_mode("speak", color="blue", bps=2)
+            while self.running:
+                push_up(my_dog, speed=92)
+                bark(my_dog, [0, 0, -40])
+                self.sleep(0.4)
+        except Exception as e:
+            print(f"Error in pushup: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def run_howling(self):
+        try:
+            print("Running howling")
+            if not my_dog: return
+            my_dog.do_action('sit', speed=50)
+            my_dog.head_move([[0, 0, 0]], pitch_comp=-40, immediately=True, speed=80)
+            self.sleep(0.5)
+            while self.running:
+                howling(my_dog)
+        except Exception as e:
+            print(f"Error in howling: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def run_balance(self):
+        try:
+            print("Running balance")
+            if not my_dog: return
+            # Demo of balance: stand then cycle poses
+            stand_coords = [[[-15, 95], [-15, 95], [5, 90], [5, 90]]]
+            forward_coords = Walk(fb=Walk.FORWARD, lr=Walk.STRAIGHT).get_coords()
+            backward_coords = Walk(fb=Walk.BACKWARD, lr=Walk.STRAIGHT).get_coords()
+            
+            current_coords = stand_coords
+            current_pose = {'x': 0, 'y': 0, 'z': 80}
+            current_rpy = {'roll': 0, 'pitch': 0, 'yaw': 0}
+            
+            my_dog.do_action('stand', speed=80)
+            my_dog.wait_legs_done()
+            
+            # Simple demo loop
+            modes = [stand_coords, forward_coords, backward_coords]
+            idx = 0
+            
+            while self.running:
+                # Cycle through modes every few seconds for demo
+                # Or just hold stand if that's what balance means (it adjusts to terrain?)
+                # The original script uses IMU in move_thread implicitly? 
+                # No, the original script just sets legs to coords. 
+                # Wait, 10_balance.py sets pid=True in set_rpy, so it uses IMU for self-balancing!
+                
+                # We need a loop that updates servos based on IMU
+                for coord in current_coords:
+                    if not self.running: break
+                    my_dog.set_rpy(**current_rpy, pid=True)
+                    my_dog.set_pose(**current_pose)
+                    my_dog.set_legs(coord)
+                    angles = my_dog.pose2legs_angle()
+                    my_dog.legs.servo_move(angles, speed=98)
+                    # self.sleep(0.01) # Small delay for loop? Original has no delay in thread
+                
+                # Switch modes for demo effect? Or just keep balancing?
+                # Let's just keep balancing in stand mode for now
+                pass
+                
+        except Exception as e:
+            print(f"Error in balance: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def run_response(self):
+        try:
+            print("Running response")
+            if not my_dog: return
+            
+            def lean_forward():
+                my_dog.speak('angry', volume=80)
+                bark_action(my_dog)
+                self.sleep(0.2)
+                bark_action(my_dog)
+                self.sleep(0.4)
+                bark_action(my_dog)
+
+            def head_nod(step):
+                y = 0; r = 0; p = 30
+                angs = []
+                for i in range(20):
+                    r = round(10*sin(i*0.314), 2)
+                    p = round(20*sin(i*0.314) + 10, 2)
+                    angs.append([y, r, p])
+                my_dog.head_move(angs*step, immediately=False, speed=80)
+
+            my_dog.do_action('stand', step_count=1, speed=70)
+            my_dog.rgb_strip.set_mode('breath', color='pink', bps=1, brightness=0.8)
+            
+            while self.running:
+                # alert
+                dist = my_dog.read_distance()
+                if dist < 15 and dist > 1:
+                    my_dog.head_move([[0, 0, 0]], immediately=True, speed=90)
+                    my_dog.tail_move([[0]], immediately=True, speed=80)
+                    my_dog.rgb_strip.set_mode('bark', color='red', bps=2, brightness=0.8)
+                    my_dog.do_action('backward', step_count=1, speed=95)
+                    my_dog.wait_all_done()
+                    lean_forward()
+                    while len(my_dog.legs_action_buffer) > 0:
+                        self.sleep(0.1)
+                    my_dog.do_action('stand', step_count=1, speed=90)
+                    self.sleep(0.5)
+                # relax
+                elif my_dog.dual_touch.read() != 'N':
+                    if len(my_dog.head_action_buffer) < 2:
+                        head_nod(1)
+                        my_dog.do_action('wag_tail', step_count=10, speed=80)
+                        my_dog.rgb_strip.set_mode('listen', color="#8A2BE2", bps=0.35, brightness=0.8)
+                # calm
+                else:
+                    my_dog.rgb_strip.set_mode('breath', color='pink', bps=1, brightness=0.8)
+                    my_dog.tail_stop()
+                self.sleep(0.2)
+        except Exception as e:
+            print(f"Error in response: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def run_ball_track(self):
+        try:
+            print("Running ball_track")
+            if not my_dog: return
+            
+            Vilib.camera_start(vflip=False, hflip=False)
+            Vilib.display(local=False, web=True)
+            Vilib.color_detect(color="red")
+            self.sleep(0.2)
+            
+            yaw = 0
+            pitch = 0
+            STEP = 0.5
+            
+            my_dog.do_action('stand', speed=50)
+            my_dog.head_move([[yaw, 0, pitch]], immediately=True, speed=80)
+            my_dog.wait_legs_done()
+            my_dog.wait_head_done()
+            self.sleep(0.5)
+            
+            while self.running:
+                ball_x = Vilib.detect_obj_parameter['color_x'] - 320
+                ball_y = Vilib.detect_obj_parameter['color_y'] - 240
+                width = Vilib.detect_obj_parameter['color_w']
+                
+                if ball_x > 15 and yaw > -80:
+                    yaw -= STEP
+                elif ball_x < -15 and yaw < 80:
+                    yaw += STEP
+                    
+                if ball_y > 25:
+                    pitch -= STEP
+                    if pitch < -40: pitch = -40
+                elif ball_y < -25:
+                    pitch += STEP
+                    if pitch > 20: pitch = 20
+                    
+                my_dog.head_move([[yaw, 0, pitch]], immediately=True, speed=100)
+                
+                if width == 0:
+                    pitch = 0
+                    yaw = 0
+                elif width < 300:
+                    if my_dog.is_legs_done():
+                        if yaw < -30:
+                            my_dog.do_action('turn_right', speed=98)
+                        elif yaw > 30:
+                            my_dog.do_action('turn_left', speed=98)
+                        else:
+                            my_dog.do_action('forward', speed=98)
+                self.sleep(0.02)
+                
+        except Exception as e:
+            print(f"Error in ball_track: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            Vilib.camera_close()
 
 example_runner = ExampleRunner()
 
 @app.route('/examples', methods=['GET'])
 def list_examples():
     # Return list of supported examples
-    return jsonify(['1_wake_up.py', '3_patrol.py', '5_rest.py'])
+    return jsonify([
+        '1_wake_up.py', 
+        '3_patrol.py', 
+        '4_response.py',
+        '5_rest.py',
+        '8_pushup.py',
+        '9_howling.py',
+        '10_balance.py',
+        '13_ball_track.py'
+    ])
 
 @app.route('/examples/run', methods=['POST'])
 def run_example():
