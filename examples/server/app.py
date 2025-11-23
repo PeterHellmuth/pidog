@@ -740,8 +740,24 @@ class ExampleRunner:
                 if my_dog.ears.isdetected():
                     sound_dir = my_dog.ears.read()
 
+                # --- INTERACTION TIMER ---
+                # If interacting, wait for it to finish
+                if state == 'INTERACTING':
+                    # Reset Superman flags to prevent false triggers from robot movement
+                    upflag = False
+                    downflag = False
+                    
+                    if current_time > state_timer:
+                        state = 'AWAKE'
+                        my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
+                        my_dog.head_move([[0,0,0]], speed=80)
+                    else:
+                        self.sleep(0.02)
+                        continue
+
                 # --- SUPERMAN DETECTION ---
                 # Logic adapted from 6_be_picked_up.py
+                # Only check if NOT interacting (stable)
                 if ax < ACC_LIFT_THRESH:
                     if not upflag: upflag = True
                     if downflag:
@@ -770,17 +786,6 @@ class ExampleRunner:
                 if state == 'SUPERMAN':
                     self.sleep(0.02)
                     continue
-
-                # --- INTERACTION TIMER ---
-                # If interacting, wait for it to finish
-                if state == 'INTERACTING':
-                    if current_time > state_timer:
-                        state = 'AWAKE'
-                        my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
-                        my_dog.head_move([[0,0,0]], speed=80)
-                    else:
-                        self.sleep(0.02)
-                        continue
 
                 # --- STATE LOGIC ---
                 
