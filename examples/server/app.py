@@ -211,8 +211,8 @@ running_process = None
 @app.route('/examples', methods=['GET'])
 def list_examples():
     import glob
-    # List python files starting with a digit in the parent directory
-    files = glob.glob(os.path.join(os.path.dirname(__file__), '../../[0-9]*.py'))
+    # List python files starting with a digit in the parent directory (examples/)
+    files = glob.glob(os.path.join(os.path.dirname(__file__), '../[0-9]*.py'))
     filenames = [os.path.basename(f) for f in files]
     filenames.sort()
     return jsonify(filenames)
@@ -227,7 +227,7 @@ def run_example():
     if not filename:
         return jsonify({"error": "Filename required"}), 400
         
-    path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../', filename))
+    path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../', filename))
     if not os.path.exists(path):
         return jsonify({"error": "File not found"}), 404
 
