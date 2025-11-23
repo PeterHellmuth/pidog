@@ -239,6 +239,10 @@ class ExampleRunner:
             target = self.run_response
         elif 'ball_track' in example_name:
             target = self.run_ball_track
+        elif 'super_dog' in example_name:
+            target = self.run_super_dog
+        elif 'kids_play' in example_name:
+            target = self.run_kids_play
         
         if target:
             self.thread = threading.Thread(target=target)
@@ -595,6 +599,230 @@ class ExampleRunner:
         finally:
             Vilib.camera_close()
 
+    def run_super_dog(self):
+        try:
+            print("Running super_dog")
+            if not my_dog: return
+            
+            # 1. Intro: Wake up and Greet
+            print("Phase 1: Wake up")
+            my_dog.head_move([[0, 0, -30]], immediately=True, speed=80)
+            self.sleep(0.5)
+            my_dog.do_action('stand', speed=80)
+            my_dog.wait_all_done()
+            
+            # RGB Rainbow effect (simulated by cycling colors)
+            # Use valid colors from rgb_strip.py or RGB lists
+            colors = ['red', [255, 128, 0], 'yellow', 'green', 'blue', 'magenta'] # Orange as list, purple->magenta
+            for color in colors:
+                if not self.running: return
+                my_dog.rgb_strip.set_mode('breath', color=color, bps=5, brightness=0.8)
+                self.sleep(0.5)
+            
+            # 2. Excitement
+            print("Phase 2: Excitement")
+            if not self.running: return
+            my_dog.do_action('wag_tail', step_count=20, speed=100)
+            bark(my_dog, [0, 0, 0])
+            self.sleep(0.5)
+            pant(my_dog)
+            self.sleep(1)
+
+            # 3. Exercise (Pushups)
+            print("Phase 3: Exercise")
+            if not self.running: return
+            my_dog.rgb_strip.set_mode('speak', color='blue', bps=2)
+            for _ in range(3):
+                if not self.running: break
+                push_up(my_dog, speed=95)
+                self.sleep(0.5)
+            my_dog.do_action('stand', speed=80)
+            my_dog.wait_all_done()
+
+            # 4. Show off (Howl)
+            print("Phase 4: Howl")
+            if not self.running: return
+            my_dog.do_action('sit', speed=60)
+            my_dog.wait_all_done()
+            howling(my_dog)
+            self.sleep(1)
+
+            # 5. Patrol (Trot forward)
+            print("Phase 5: Patrol")
+            if not self.running: return
+            my_dog.do_action('stand', speed=80)
+            my_dog.wait_all_done()
+            my_dog.rgb_strip.set_mode('breath', 'green', bps=1)
+            
+            # Trot forward for a bit
+            my_dog.do_action('forward', step_count=5, speed=98)
+            my_dog.wait_legs_done()
+            
+            # Scan
+            my_dog.head_move([[45, 0, 0]], speed=80)
+            my_dog.wait_head_done()
+            self.sleep(0.5)
+            my_dog.head_move([[-45, 0, 0]], speed=80)
+            my_dog.wait_head_done()
+            self.sleep(0.5)
+            my_dog.head_move([[0, 0, 0]], speed=80)
+            my_dog.wait_head_done()
+
+            # 6. Relax
+            print("Phase 6: Relax")
+            if not self.running: return
+            my_dog.do_action('sit', speed=50)
+            my_dog.wait_legs_done()
+            self.sleep(0.5)
+            
+            # Yawn/Stretch head
+            my_dog.head_move([[0, 0, 30]], speed=60)
+            self.sleep(1)
+            my_dog.head_move([[0, 0, 0]], speed=60)
+            
+            # Lie down
+            my_dog.do_action('lie', speed=40)
+            my_dog.wait_all_done()
+            my_dog.rgb_strip.set_mode('breath', 'pink', bps=0.2)
+            
+            # Sleep loop
+            while self.running:
+                my_dog.do_action('doze_off', speed=80)
+                self.sleep(1)
+
+        except Exception as e:
+            print(f"Error in super_dog: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def run_kids_play(self):
+        try:
+            print("Running kids_play")
+            if not my_dog: return
+            
+            # States: SLEEP, AWAKE, SUPERMAN
+            state = 'SLEEP'
+            last_state = None
+            
+            # Superman detection vars
+            upflag = False
+            downflag = False
+            
+            # Initial Sleep Setup
+            my_dog.do_action('lie', speed=50)
+            my_dog.wait_all_done()
+            
+            def check_superman():
+                nonlocal upflag, downflag
+                ax = my_dog.accData[0]
+                # gravity : 1G = -16384
+                # Picked up logic from 6_be_picked_up.py
+                if ax < -18000: # accelerating down (start of lift?)
+                    if not upflag: upflag = True
+                    if downflag:
+                        downflag = False
+                        return False # Landed
+                
+                if ax > -13000: # accelerating up (end of lift?)
+                    if upflag:
+                        upflag = False
+                        return True # Flying!
+                    if not downflag: downflag = True
+                return None
+
+            while self.running:
+                # 1. Check Sensors
+                is_touched = my_dog.dual_touch.read() != 'N'
+                
+                direction = 0
+                if my_dog.ears.isdetected():
+                    direction = my_dog.ears.read()
+                
+                is_flying = check_superman()
+                
+                # State Transitions
+                if is_flying is True and state != 'SUPERMAN':
+                    state = 'SUPERMAN'
+                elif is_flying is False and state == 'SUPERMAN':
+                    state = 'AWAKE' # Landed
+                
+                # State Logic
+                if state == 'SLEEP':
+                    if last_state != 'SLEEP':
+                        print("State: SLEEP")
+                        my_dog.rgb_strip.set_mode('breath', 'pink', bps=0.3)
+                        my_dog.do_action('lie', speed=50)
+                        last_state = 'SLEEP'
+                    
+                    my_dog.do_action('doze_off', speed=80)
+                    
+                    # Wake up on touch or loud sound
+                    if is_touched or direction != 0:
+                        print("Waking up!")
+                        my_dog.rgb_strip.set_mode('boom', 'yellow', bps=1)
+                        my_dog.body_stop()
+                        self.sleep(0.2)
+                        my_dog.do_action('stand', speed=80)
+                        my_dog.head_move([[0, 0, 0]], immediately=True, speed=80)
+                        my_dog.wait_all_done()
+                        # Stretch
+                        my_dog.do_action('stretch', speed=50)
+                        my_dog.wait_all_done()
+                        state = 'AWAKE'
+                        
+                elif state == 'AWAKE':
+                    if last_state != 'AWAKE':
+                        print("State: AWAKE")
+                        my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
+                        my_dog.do_action('stand', speed=80)
+                        last_state = 'AWAKE'
+                        
+                    # React to touch
+                    if is_touched:
+                        # Use RGB list for orange [255, 128, 0]
+                        my_dog.rgb_strip.set_mode('breath', [255, 128, 0], bps=1)
+                        my_dog.do_action('wag_tail', step_count=5, speed=100)
+                        bark(my_dog, [0, 0, 0])
+                        my_dog.head_move([[0, 0, -20]], speed=80) # Look down/happy
+                        self.sleep(1)
+                        my_dog.head_move([[0, 0, 0]], speed=80)
+                        
+                    # React to sound
+                    elif direction != 0:
+                        print(f"Heard sound at {direction}")
+                        my_dog.rgb_strip.set_mode('listen', 'blue', bps=1)
+                        # Turn head to sound
+                        yaw = 0
+                        if direction > 0: yaw = -30
+                        elif direction < 0: yaw = 30
+                        my_dog.head_move([[yaw, 0, 0]], speed=90)
+                        self.sleep(1)
+                        my_dog.head_move([[0, 0, 0]], speed=80)
+                        
+                    # Idle behavior
+                    else:
+                        my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
+                        # Random small movements?
+                        pass
+                        
+                elif state == 'SUPERMAN':
+                    if last_state != 'SUPERMAN':
+                        print("State: SUPERMAN")
+                        my_dog.rgb_strip.set_mode('boom', color='red', bps=3)
+                        # Superman pose
+                        my_dog.legs.servo_move([45, -45, 90, -80, 90, 90, -90, -90], speed=60)
+                        my_dog.speak('woohoo', volume=80)
+                        last_state = 'SUPERMAN'
+                    
+                    my_dog.do_action('wag_tail', step_count=1, speed=100)
+                
+                self.sleep(0.05)
+
+        except Exception as e:
+            print(f"Error in kids_play: {e}")
+            import traceback
+            traceback.print_exc()
+
 example_runner = ExampleRunner()
 
 @app.route('/examples', methods=['GET'])
@@ -608,7 +836,9 @@ def list_examples():
         '8_pushup.py',
         '9_howling.py',
         '10_balance.py',
-        '13_ball_track.py'
+        '13_ball_track.py',
+        '99_kids_play.py',
+        '99_super_dog.py'
     ])
 
 @app.route('/examples/run', methods=['POST'])
