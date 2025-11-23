@@ -216,6 +216,7 @@ class ExampleRunner:
         self.current_example = None
 
     def start(self, example_name):
+        print(f"Starting example: {example_name}")
         if self.running:
             self.stop()
         
@@ -759,7 +760,7 @@ class ExampleRunner:
             # Require stronger acceleration to trigger
             ACC_LIFT_THRESH = -20000 # ~1.2G (Accelerating UP)
             ACC_LAND_THRESH = -10000 # ~0.6G (Weightless/Drop)
-            DIST_THRESH = 10         # Reduced to 10cm to prevent false positives
+            DIST_THRESH = 5          # Reduced to 5cm to prevent false positives
             
             # State
             state = 'SLEEP' # SLEEP, AWAKE, SUPERMAN, INTERACTING
@@ -793,32 +794,33 @@ class ExampleRunner:
 
                 # --- SUPERMAN DETECTION (Priority 1) ---
                 # Logic adapted from 6_be_picked_up.py
-                # Always check this, even if interacting
-                if ax < ACC_LIFT_THRESH:
-                    if not upflag: 
-                        print(f"KidsPlay: Lift detected! AX={ax}")
-                        upflag = True
-                    if downflag:
-                        # Landed
-                        if state == 'SUPERMAN':
-                            print("Landed!")
-                            state = 'AWAKE'
-                            my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
-                            my_dog.do_action('stand', speed=80)
-                        downflag = False
-                        
-                if ax > ACC_LAND_THRESH:
-                    if upflag:
-                        # Flying
-                        if state != 'SUPERMAN':
-                            print(f"KidsPlay: Flying! AX={ax}")
-                            state = 'SUPERMAN'
-                            my_dog.rgb_strip.set_mode('boom', 'red', bps=3)
-                            my_dog.legs.servo_move([45, -45, 90, -80, 90, 90, -90, -90], speed=60)
-                            my_dog.speak('woohoo', volume=80)
-                            my_dog.do_action('wag_tail', step_count=10, speed=100)
-                        upflag = False
-                    if not downflag: downflag = True
+                # Disable during interaction to prevent self-triggering
+                if state != 'INTERACTING':
+                    if ax < ACC_LIFT_THRESH:
+                        if not upflag: 
+                            print(f"KidsPlay: Lift detected! AX={ax}")
+                            upflag = True
+                        if downflag:
+                            # Landed
+                            if state == 'SUPERMAN':
+                                print("Landed!")
+                                state = 'AWAKE'
+                                my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
+                                my_dog.do_action('stand', speed=80)
+                            downflag = False
+                            
+                    if ax > ACC_LAND_THRESH:
+                        if upflag:
+                            # Flying
+                            if state != 'SUPERMAN':
+                                print(f"KidsPlay: Flying! AX={ax}")
+                                state = 'SUPERMAN'
+                                my_dog.rgb_strip.set_mode('boom', 'red', bps=3)
+                                my_dog.legs.servo_move([45, -45, 90, -80, 90, 90, -90, -90], speed=60)
+                                my_dog.speak('woohoo', volume=80)
+                                my_dog.do_action('wag_tail', step_count=10, speed=100)
+                            upflag = False
+                        if not downflag: downflag = True
 
                 # If Superman, skip other logic
                 if state == 'SUPERMAN':
@@ -845,8 +847,9 @@ class ExampleRunner:
                 
                 if state == 'SLEEP':
                     # Doze off animation periodically
-                    if current_time - last_doze_time > 0.2:
+                    if current_time - last_doze_time > 2.0: # Slower doze
                         my_dog.do_action('doze_off', speed=80)
+                        pant(my_dog, volume=30) # Sleeping sound
                         last_doze_time = current_time
                     
                     # Wake up triggers - TOUCH ONLY
