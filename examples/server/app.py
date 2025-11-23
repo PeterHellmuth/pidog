@@ -705,7 +705,7 @@ class ExampleRunner:
             # Require stronger acceleration to trigger
             ACC_LIFT_THRESH = -20000 # ~1.2G (Accelerating UP)
             ACC_LAND_THRESH = -10000 # ~0.6G (Weightless/Drop)
-            DIST_THRESH = 15
+            DIST_THRESH = 15         # From 4_response.py
             
             # State
             state = 'SLEEP' # SLEEP, AWAKE, SUPERMAN, INTERACTING
@@ -720,8 +720,8 @@ class ExampleRunner:
             # Initial Setup
             my_dog.do_action('lie', speed=50)
             my_dog.wait_all_done()
-            # Wait for robot to settle to avoid false triggers from servo movement
-            self.sleep(1.0) 
+            # Wait for robot to settle
+            self.sleep(0.5) 
             my_dog.rgb_strip.set_mode('breath', 'pink', bps=0.3)
             
             while self.running:
@@ -733,6 +733,9 @@ class ExampleRunner:
                 is_touched = touch != 'N'
                 distance = my_dog.read_distance()
                 
+                # Debug print for tuning
+                # print(f"AX: {ax}, Dist: {distance}")
+
                 sound_dir = 0
                 if my_dog.ears.isdetected():
                     sound_dir = my_dog.ears.read()
@@ -787,9 +790,8 @@ class ExampleRunner:
                         my_dog.do_action('doze_off', speed=80)
                         last_doze_time = current_time
                     
-                    # Wake up triggers
-                    # Increased sound cooldown to prevent instant wakeups from background noise
-                    if is_touched or (sound_dir != 0 and current_time - last_sound_time > 4):
+                    # Wake up triggers - TOUCH ONLY
+                    if is_touched:
                         print("Waking up!")
                         state = 'INTERACTING'
                         state_timer = current_time + 3
@@ -804,7 +806,8 @@ class ExampleRunner:
 
                 elif state == 'AWAKE':
                     # 1. Distance (Back up)
-                    if distance > 0 and distance < DIST_THRESH:
+                    # Added > 1 check from 4_response.py to avoid 0/noise
+                    if distance > 1 and distance < DIST_THRESH:
                         print(f"Too close! {distance}")
                         state = 'INTERACTING'
                         state_timer = current_time + 2.5
@@ -825,8 +828,7 @@ class ExampleRunner:
                         my_dog.head_move([[0, 0, -20]], speed=80)
 
                     # 3. Sound (Turn head)
-                    # Increased cooldown to 4s to prevent jerking
-                    elif sound_dir != 0 and current_time - last_sound_time > 4:
+                    elif sound_dir != 0 and current_time - last_sound_time > 2:
                         print(f"Sound at {sound_dir}")
                         last_sound_time = current_time
                         state = 'INTERACTING'
