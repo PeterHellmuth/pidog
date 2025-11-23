@@ -855,7 +855,10 @@ example_runner = ExampleRunner()
 @app.route('/examples', methods=['GET'])
 def list_examples():
     # Return list of supported examples
+    # Custom examples first!
     return jsonify([
+        '00_kids_play.py',
+        '01_super_dog.py',
         '1_wake_up.py', 
         '3_patrol.py', 
         '4_response.py',
@@ -863,9 +866,7 @@ def list_examples():
         '8_pushup.py',
         '9_howling.py',
         '10_balance.py',
-        '13_ball_track.py',
-        '99_kids_play.py',
-        '99_super_dog.py'
+        '13_ball_track.py'
     ])
 
 @app.route('/examples/run', methods=['POST'])
