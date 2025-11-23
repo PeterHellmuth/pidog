@@ -205,111 +205,269 @@ try:
 except Exception as e:
     logging.error(f"Failed to initialize Vilib: {e}")
 
-# Global state for running examples
-running_process = None
+from pidog.preset_actions import pant, body_twisting, bark, shake_head
+
+class ExampleRunner:
+    def __init__(self):
+        self.running = False
+        self.thread = None
+        self.current_example = None
+
+    def start(self, example_name):
+        if self.running:
+            self.stop()
+        
+        self.running = True
+        self.current_example = example_name
+        
+        target = None
+        if 'wake_up' in example_name:
+            target = self.run_wake_up
+        elif 'patrol' in example_name:
+            target = self.run_patrol
+        elif 'rest' in example_name:
+            target = self.run_rest
+        
+        if target:
+            self.thread = threading.Thread(target=target)
+            self.thread.start()
+            return True, f"Started {example_name}"
+        else:
+            self.running = False
+            return False, "Example not supported for internal execution yet"
+
+    def stop(self):
+        self.running = False
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=2)
+        self.thread = None
+        self.current_example = None
+        # Reset robot state
+        if my_dog:
+            my_dog.body_stop()
+            my_dog.head_move([[0, 0, 0]], immediately=True, speed=80)
+
+    def sleep(self, duration):
+        """Interruptible sleep"""
+        end_time = time.time() + duration
+        while self.running and time.time() < end_time:
+            time.sleep(0.05)
+
+    def run_wake_up(self):
+        try:
+            print("Running wake_up")
+            # 1_wake_up.py logic
+            if not my_dog: return
+            
+            # Init pose from example
+            my_dog.head_move([[0, 0, -30]], immediately=True, speed=80)
+            self.sleep(1)
+            
+            # stretch
+            if not self.running: return
+            my_dog.rgb_strip.set_mode('listen', color='yellow', bps=0.6, brightness=0.8)
+            my_dog.do_action('stretch', speed=50)
+            my_dog.head_move([[0, 0, 30]]*2, immediately=True)
+            my_dog.wait_all_done()
+            self.sleep(0.2)
+            
+            if not self.running: return
+            body_twisting(my_dog)
+            my_dog.wait_all_done()
+            self.sleep(0.5)
+            
+            if not self.running: return
+            my_dog.head_move([[0, 0, -30]], immediately=True, speed=90)
+            # sit and wag_tail
+            my_dog.do_action('sit', speed=25)
+            my_dog.wait_legs_done()
+            my_dog.do_action('wag_tail', step_count=10, speed=100)
+            my_dog.rgb_strip.set_mode('breath', color=[245, 10, 10], bps=2.5, brightness=0.8)
+            pant(my_dog, pitch_comp=-30, volume=80)
+            my_dog.wait_all_done()
+            
+            # hold
+            if not self.running: return
+            my_dog.do_action('wag_tail', step_count=10, speed=30)
+            my_dog.rgb_strip.set_mode('breath', 'pink', bps=0.5)
+            
+            while self.running:
+                self.sleep(1)
+                
+        except Exception as e:
+            print(f"Error in wake_up: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def run_patrol(self):
+        try:
+            print("Running patrol")
+            # 3_patrol.py logic
+            if not my_dog: return
+            
+            DANGER_DISTANCE = 15
+            
+            my_dog.do_action('stand', speed=80)
+            my_dog.wait_all_done()
+            self.sleep(0.5)
+            
+            stand = my_dog.legs_angle_calculation([[0, 80], [0, 80], [30, 75], [30, 75]])
+            
+            while self.running:
+                distance = round(my_dog.read_distance(), 2)
+                # print(f"distance: {distance} cm")
+
+                # danger
+                if distance > 0 and distance < DANGER_DISTANCE:
+                    print(f"DANGER! Distance: {distance}")
+                    my_dog.body_stop()
+                    head_yaw = my_dog.head_current_angles[0]
+                    my_dog.rgb_strip.set_mode('bark', 'red', bps=2)
+                    my_dog.tail_move([[0]], speed=80)
+                    my_dog.legs_move([stand], speed=70)
+                    my_dog.wait_all_done()
+                    self.sleep(0.5)
+                    bark(my_dog, [head_yaw, 0, 0])
+
+                    while self.running and distance < DANGER_DISTANCE:
+                        distance = round(my_dog.read_distance(), 2)
+                        self.sleep(0.01)
+                # safe
+                else:
+                    my_dog.rgb_strip.set_mode('breath', 'white', bps=0.5)
+                    my_dog.do_action('forward', step_count=2, speed=98)
+                    my_dog.do_action('shake_head', step_count=1, speed=80)
+                    my_dog.do_action('wag_tail', step_count=5, speed=99)
+                
+                self.sleep(0.01)
+
+        except Exception as e:
+            print(f"Error in patrol: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def run_rest(self):
+        try:
+            print("Running rest")
+            # 5_rest.py logic
+            if not my_dog: return
+            
+            def loop_around(amplitude=60, interval=0.5, speed=100):
+                if not self.running: return
+                my_dog.head_move([[amplitude,0,0]], immediately=True, speed=speed)
+                my_dog.wait_all_done()
+                self.sleep(interval)
+                if not self.running: return
+                my_dog.head_move([[-amplitude,0,0]], immediately=True, speed=speed)
+                my_dog.wait_all_done()
+                self.sleep(interval)
+                if not self.running: return
+                my_dog.head_move([[0,0,0]], immediately=True, speed=speed)
+                my_dog.wait_all_done()
+
+            def is_sound():
+                if my_dog.ears.isdetected():
+                    direction = my_dog.ears.read()
+                    if direction != 0:
+                        return True
+                return False
+
+            my_dog.wait_all_done()
+            my_dog.do_action('lie', speed=50)
+            my_dog.wait_all_done()
+
+            while self.running:
+                # Sleeping
+                my_dog.rgb_strip.set_mode('breath', 'pink', bps=0.3)
+                my_dog.head_move([[0,0,-40]], immediately=True, speed=5)
+                my_dog.do_action('doze_off', speed=92)
+                
+                # Cleanup sound detection logic simulation (sleep and check)
+                self.sleep(1)
+                if is_sound(): pass # Just check
+
+                # keep sleeping
+                while self.running and is_sound() is False:
+                    my_dog.do_action('doze_off', speed=92)
+                    self.sleep(0.2)
+
+                if not self.running: break
+
+                # If heard anything, wake up
+                my_dog.rgb_strip.set_mode('boom', 'yellow', bps=1)
+                my_dog.body_stop()
+                self.sleep(0.1)
+                my_dog.do_action('stand', speed=80)
+                my_dog.head_move([[0, 0, 0]], immediately=True, speed=80)
+                my_dog.wait_all_done()
+                
+                # Look around
+                loop_around(60, 1, 60)
+                self.sleep(0.5)
+                
+                # tilt head
+                my_dog.speak('confused_3', volume=80)
+                my_dog.do_action('tilting_head_left', speed=80)
+                my_dog.wait_all_done()
+                self.sleep(1.2)
+                my_dog.head_move([[0, 0, -10]], immediately=True, speed=80)
+                my_dog.wait_all_done()
+                self.sleep(0.4)
+                
+                shake_head(my_dog)
+                self.sleep(0.2)
+
+                # Lay down again
+                my_dog.rgb_strip.set_mode('breath', 'pink', bps=1)
+                my_dog.do_action('lie', speed=50)
+                my_dog.wait_all_done()
+                self.sleep(1)
+
+        except Exception as e:
+            print(f"Error in rest: {e}")
+            import traceback
+            traceback.print_exc()
+
+example_runner = ExampleRunner()
 
 @app.route('/examples', methods=['GET'])
 def list_examples():
-    import glob
-    # List python files starting with a digit in the parent directory (examples/)
-    files = glob.glob(os.path.join(os.path.dirname(__file__), '../[0-9]*.py'))
-    filenames = [os.path.basename(f) for f in files]
-    filenames.sort()
-    return jsonify(filenames)
+    # Return list of supported examples
+    return jsonify(['1_wake_up.py', '3_patrol.py', '5_rest.py'])
 
 @app.route('/examples/run', methods=['POST'])
 def run_example():
-    global running_process, my_dog
-    
     data = request.json
     filename = data.get('filename')
     
     if not filename:
         return jsonify({"error": "Filename required"}), 400
         
-    path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../', filename))
-    if not os.path.exists(path):
-        return jsonify({"error": "File not found"}), 404
+    if not my_dog:
+        return jsonify({"error": "Pidog not initialized"}), 500
 
-    try:
-        # Stop existing process if any
-        if running_process:
-            running_process.terminate()
-            running_process.wait()
-            running_process = None
-            
-        # Release Pidog resources
-        if my_dog:
-            try:
-                # my_dog.close() uses signals which fail in Flask threads
-                # Manually clean up
-                print("Cleaning up Pidog...")
-                my_dog.stop_and_lie()
-                my_dog.close_all_thread()
-                if hasattr(my_dog, 'sensory_process') and my_dog.sensory_process:
-                    my_dog.sensory_process.terminate()
-                print("Pidog cleanup done.")
-            except Exception as e:
-                print(f"Error cleaning up Pidog: {e}")
-                import traceback
-                traceback.print_exc()
-            my_dog = None
-            
-        # Start new process
-        # Run from the parent directory so relative paths in examples work
-        cwd = os.path.dirname(path)
-        print(f"Starting example: {filename} in {cwd}")
-        running_process = subprocess.Popen(['python3', filename], cwd=cwd)
-        
-        return jsonify({"message": f"Started {filename}"})
-    except Exception as e:
-        print(f"Error running example: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+    success, msg = example_runner.start(filename)
+    if success:
+        return jsonify({"message": msg})
+    else:
+        return jsonify({"error": msg}), 400
 
 @app.route('/examples/stop', methods=['POST'])
 def stop_example():
-    global running_process, my_dog
-    
-    try:
-        if running_process:
-            print(f"Stopping process {running_process.pid}...")
-            running_process.terminate()
-            try:
-                running_process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                print("Process did not stop, killing...")
-                running_process.kill()
-                running_process.wait()
-            running_process = None
-            print("Process stopped.")
-            
-        # Re-initialize Pidog
-        if my_dog is None:
-            try:
-                from pidog import Pidog
-                my_dog = Pidog()
-                my_dog.head_move([[0, 0, 0]], immediately=True, speed=80)
-            except Exception as e:
-                logging.error(f"Failed to re-init Pidog: {e}")
-                return jsonify({"error": "Failed to re-init Pidog"}), 500
-                
-        return jsonify({"message": "Stopped example and re-initialized Pidog"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    example_runner.stop()
+    return jsonify({"message": "Example stopped"})
 
 @app.route('/status', methods=['GET'])
 def status():
     return jsonify({
         "status": "online",
         "dog_initialized": my_dog is not None,
-        "running_example": running_process is not None
+        "running_example": example_runner.running
     })
 
 @app.route('/action', methods=['POST'])
 def action():
-    if running_process:
+    if example_runner.running:
         return jsonify({"error": "Cannot perform action while example is running"}), 409
 
     if not my_dog:
@@ -339,7 +497,7 @@ def action():
 
 @app.route('/move', methods=['POST'])
 def move():
-    if running_process:
+    if example_runner.running:
         return jsonify({"error": "Cannot move while example is running"}), 409
 
     if not my_dog:
@@ -365,7 +523,7 @@ def move():
 
 @app.route('/head', methods=['POST'])
 def head():
-    if running_process:
+    if example_runner.running:
         return jsonify({"error": "Cannot move head while example is running"}), 409
 
     if not my_dog:
