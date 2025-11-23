@@ -274,9 +274,16 @@ def stop_example():
     
     try:
         if running_process:
+            print(f"Stopping process {running_process.pid}...")
             running_process.terminate()
-            running_process.wait()
+            try:
+                running_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                print("Process did not stop, killing...")
+                running_process.kill()
+                running_process.wait()
             running_process = None
+            print("Process stopped.")
             
         # Re-initialize Pidog
         if my_dog is None:
