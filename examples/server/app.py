@@ -21,12 +21,13 @@ except ImportError:
 try:
     from vilib import Vilib
 except ImportError:
-    print("WARNING: Could not import 'vilib'. Video feed will not work.")
-    print("Please ensure vilib is installed correctly (check the 'picamera2' branch).")
+    print("WARNING: Could not import 'vilib'. Will attempt fallback to PiCamera/LibCamera for video_feed.")
     print(f"Current sys.path: {sys.path}")
     
     # Mock Vilib to allow server to start without video
     class MockVilib:
+        detect_obj_parameter = {'color_x': 0, 'color_y': 0, 'color_w': 0, 'color_h': 0}
+        
         @staticmethod
         def camera_start(vflip=False, hflip=False):
             print("MockVilib: camera_start")
@@ -36,6 +37,9 @@ except ImportError:
         @staticmethod
         def face_detect_switch(enable):
             print(f"MockVilib: face_detect_switch {enable}")
+        @staticmethod
+        def color_detect(color):
+            print(f"MockVilib: color_detect {color}")
         @staticmethod
         def camera_close():
             print("MockVilib: camera_close")
@@ -174,19 +178,6 @@ def generate_frames():
         if frame:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-            time.sleep(0.05) 
-        else:
-            time.sleep(0.1)
-
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route('/mjpg') # Alias for Vilib compatibility
-def mjpg():
-    return video_feed()
-
 
 # Initialize Pidog
 try:
@@ -412,7 +403,7 @@ class ExampleRunner:
             if not my_dog: return
             
             # Constants
-            ACC_LIFT_THRESH = -18000
+            ACC_LIFT_THRESH = -22000 # Increased to avoid false positives
             ACC_LAND_THRESH = -13000
             
             upflag = False
@@ -758,7 +749,7 @@ class ExampleRunner:
             # Constants - Tuned for stability
             # Gravity is approx -16384
             # Require stronger acceleration to trigger
-            ACC_LIFT_THRESH = -20000 # ~1.2G (Accelerating UP)
+            ACC_LIFT_THRESH = -22000 # ~1.35G (Accelerating UP) - Increased from -20000
             ACC_LAND_THRESH = -10000 # ~0.6G (Weightless/Drop)
             DIST_THRESH = 5          # Reduced to 5cm to prevent false positives
             
@@ -949,12 +940,15 @@ def stop_example():
     example_runner.stop()
     return jsonify({"message": "Example stopped"})
 
+
+
 @app.route('/status', methods=['GET'])
 def status():
+    # TODO: Implement actual battery reading
+    # battery_voltage = utils.get_battery_voltage()
     return jsonify({
-        "status": "online",
-        "dog_initialized": my_dog is not None,
-        "running_example": example_runner.running
+        "battery": 75, # Dummy value
+        "is_connected": True
     })
 
 @app.route('/action', methods=['POST'])
@@ -970,17 +964,32 @@ def action():
     speed = data.get('speed', 95)
     
     try:
+        # Custom Action Logic
+        if name == 'high_five':
+            # Sit first to avoid falling
+            # preset_actions.high_five handles the sequence
+            preset_actions.high_five(my_dog)
+            return jsonify({"message": "High five triggered"})
+            
+        elif name == 'wag_tail':
+            # Longer wag with sound
+            my_dog.rgb_strip.set_mode('breath', 'pink', bps=1)
+            my_dog.do_action('wag_tail', step_count=20, speed=100)
+            bark(my_dog, [0, 0, 0])
+            return jsonify({"message": "Wag tail triggered"})
+            
+        elif name == 'howl':
+            # Howl action
+            howling(my_dog)
+            return jsonify({"message": "Howl triggered"})
+
         # Check if it's a preset action
         if hasattr(preset_actions, name):
             func = getattr(preset_actions, name)
-            # Most preset actions take my_dog as first arg
-            # Some take extra args, but defaults usually work
             func(my_dog)
             return jsonify({"message": f"Preset action {name} triggered"})
         
         # Check standard actions
-        # Some actions might be in actions_dictionary but not directly callable via do_action if not mapped?
-        # Actually do_action handles everything in actions_dictionary
         my_dog.do_action(name, speed=speed)
         return jsonify({"message": f"Action {name} triggered"})
     except Exception as e:
