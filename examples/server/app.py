@@ -426,7 +426,11 @@ class ExampleRunner:
                 my_dog.rgb_strip.set_mode('boom', 'red', bps=3)
                 my_dog.legs.servo_move([45, -45, 90, -80, 90, 90, -90, -90], speed=60)
                 my_dog.speak('woohoo', volume=80)
-                my_dog.do_action('wag_tail', step_count=10, speed=100)
+                # Loop wag to check for landing
+                for _ in range(10):
+                    if not self.running: break
+                    if my_dog.accData[0] > ACC_LAND_THRESH: break
+                    my_dog.do_action('wag_tail', step_count=1, speed=100)
 
             def stand():
                 my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
@@ -808,7 +812,11 @@ class ExampleRunner:
                             my_dog.rgb_strip.set_mode('boom', 'red', bps=3)
                             my_dog.legs.servo_move([45, -45, 90, -80, 90, 90, -90, -90], speed=60)
                             my_dog.speak('woohoo', volume=80)
-                            my_dog.do_action('wag_tail', step_count=10, speed=100)
+                            # Loop wag to check for landing
+                            for _ in range(10):
+                                if not self.running: break
+                                if my_dog.accData[0] > ACC_LAND_THRESH: break
+                                my_dog.do_action('wag_tail', step_count=1, speed=100)
                         if downflag:
                             downflag = False
                             
@@ -983,7 +991,8 @@ def action():
         # Custom Action Logic
         if name == 'high_five':
             # Sit first to avoid falling
-            # preset_actions.high_five handles the sequence
+            my_dog.do_action('sit', speed=speed)
+            my_dog.wait_legs_done()
             preset_actions.high_five(my_dog)
             return jsonify({"message": "High five triggered"})
             
@@ -998,6 +1007,14 @@ def action():
             # Howl action
             howling(my_dog)
             return jsonify({"message": "Howl triggered"})
+            
+        elif name == 'pushup':
+            preset_actions.push_up(my_dog)
+            return jsonify({"message": "Pushup triggered"})
+            
+        elif name == 'rest':
+            my_dog.do_action('lie', speed=speed)
+            return jsonify({"message": "Rest triggered"})
 
         # Check if it's a preset action
         if hasattr(preset_actions, name):
