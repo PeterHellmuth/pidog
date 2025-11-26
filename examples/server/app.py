@@ -239,11 +239,11 @@ class ExampleRunner:
             target = self.run_response
         elif 'ball_track' in example_name:
             target = self.run_ball_track
-        elif 'super_dog' in example_name:
+        elif 'show_off' in example_name:
             target = self.run_super_dog
         elif 'kids_play' in example_name:
             target = self.run_kids_play
-        elif 'be_picked_up' in example_name:
+        elif 'super_dog' in example_name:
             target = self.run_be_picked_up
         
         if target:
@@ -757,8 +757,8 @@ class ExampleRunner:
             # Constants - Tuned for stability
             # Gravity is approx -16384
             # Require stronger acceleration to trigger
-            ACC_LIFT_THRESH = -22000 # ~1.35G (Accelerating UP) - Increased from -20000
-            ACC_LAND_THRESH = -10000 # ~0.6G (Weightless/Drop)
+            ACC_LIFT_THRESH = -22000 # Increased to avoid false positives
+            ACC_LAND_THRESH = -13000
             DIST_THRESH = 5          # Reduced to 5cm to prevent false positives
             
             # State
@@ -799,27 +799,24 @@ class ExampleRunner:
                         if not upflag: 
                             print(f"KidsPlay: Lift detected! AX={ax}")
                             upflag = True
+                            state = 'SUPERMAN'
+                            my_dog.rgb_strip.set_mode('boom', 'red', bps=3)
+                            my_dog.legs.servo_move([45, -45, 90, -80, 90, 90, -90, -90], speed=60)
+                            my_dog.speak('woohoo', volume=80)
+                            my_dog.do_action('wag_tail', step_count=10, speed=100)
                         if downflag:
-                            # Landed
-                            if state == 'SUPERMAN':
-                                print("Landed!")
-                                state = 'AWAKE'
-                                my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
-                                my_dog.do_action('stand', speed=80)
                             downflag = False
                             
                     if ax > ACC_LAND_THRESH:
                         if upflag:
-                            # Flying
-                            if state != 'SUPERMAN':
-                                print(f"KidsPlay: Flying! AX={ax}")
-                                state = 'SUPERMAN'
-                                my_dog.rgb_strip.set_mode('boom', 'red', bps=3)
-                                my_dog.legs.servo_move([45, -45, 90, -80, 90, 90, -90, -90], speed=60)
-                                my_dog.speak('woohoo', volume=80)
-                                my_dog.do_action('wag_tail', step_count=10, speed=100)
+                            print(f"KidsPlay: Land detected! AX={ax}")
                             upflag = False
-                        if not downflag: downflag = True
+                            state = 'AWAKE'
+                            my_dog.rgb_strip.set_mode('breath', 'cyan', bps=0.5)
+                            my_dog.do_action('stand', speed=80)
+                            my_dog.head_move([[0, 0, 0]], speed=80)
+                        if not downflag: 
+                            downflag = True
 
                 # If Superman, skip other logic
                 if state == 'SUPERMAN':
@@ -851,8 +848,8 @@ class ExampleRunner:
                         pant(my_dog, volume=30) # Sleeping sound
                         last_doze_time = current_time
                     
-                    # Wake up triggers - TOUCH ONLY
-                    if is_touched:
+                    # Wake up triggers - TOUCH OR SOUND
+                    if is_touched or sound_dir != 0:
                         print("Waking up!")
                         state = 'INTERACTING'
                         state_timer = current_time + 5
@@ -914,12 +911,12 @@ def list_examples():
     # Custom examples first!
     return jsonify([
         '00_kids_play.py',
-        '01_super_dog.py',
+        '01_show_off.py',
         '1_wake_up.py', 
         '3_patrol.py', 
         '4_response.py',
         '5_rest.py',
-        '6_be_picked_up.py',
+        '6_super_dog.py',
         '8_pushup.py',
         '9_howling.py',
         '10_balance.py',
