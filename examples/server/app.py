@@ -9,6 +9,11 @@ from flask_cors import CORS
 import time
 import threading
 import logging
+try:
+    from robot_hat import utils
+except ImportError:
+    utils = None
+    print("Warning: robot_hat not found. Battery reading disabled.")
 
 # Try to import Pidog and Vilib with debug info
 try:
@@ -945,15 +950,21 @@ def stop_example():
     example_runner.stop()
     return jsonify({"message": "Example stopped"})
 
-
-
 @app.route('/status', methods=['GET'])
 def status():
-    # TODO: Implement actual battery reading
-    # battery_voltage = utils.get_battery_voltage()
+    battery_val = -1
+    if utils:
+        try:
+            voltage = utils.get_battery_voltage()
+            # 6.0V to 8.4V range
+            battery_val = int((voltage - 6.0) / (8.4 - 6.0) * 100)
+            battery_val = max(0, min(100, battery_val))
+        except Exception as e:
+            print(f"Battery read error: {e}")
+            
     return jsonify({
-        "battery": 75, # Dummy value
-        "is_connected": True
+        "battery": battery_val,
+        "status": "Online" if my_dog else "Offline"
     })
 
 @app.route('/action', methods=['POST'])
