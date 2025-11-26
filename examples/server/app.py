@@ -75,6 +75,34 @@ class PiCameraStream:
         stream.seek(0)
         return stream.read()
 
+# Camera class for newer OS (using picamera2)
+class PiCamera2Stream:
+    def __init__(self):
+        self.picam2 = None
+        try:
+            from picamera2 import Picamera2
+            self.picam2 = Picamera2()
+            config = self.picam2.create_video_configuration(main={"size": (320, 240), "format": "RGB888"})
+            self.picam2.configure(config)
+            self.picam2.start()
+            print("Started Picamera2")
+        except Exception as e:
+            raise ImportError(f"Picamera2 failed: {e}")
+
+    def get_frame(self):
+        if not self.picam2:
+            return None
+        try:
+            # Capture array and encode to JPEG
+            # This is slightly inefficient but robust
+            import numpy as np
+            frame = self.picam2.capture_array()
+            ret, jpeg = cv2.imencode('.jpg', frame)
+            return jpeg.tobytes()
+        except Exception as e:
+            print(f"Picamera2 capture failed: {e}")
+            return None
+
 # Camera class for newer OS (using libcamera-vid / rpicam-vid)
 class LibCameraStream:
     def __init__(self):
@@ -119,6 +147,14 @@ class CameraWrapper:
             self.stream = PiCameraStream()
             print("Using PiCamera")
             return 
+        except ImportError:
+            pass
+
+        # Try PiCamera2
+        try:
+            self.stream = PiCamera2Stream()
+            print("Using PiCamera2")
+            return
         except ImportError:
             pass
             
